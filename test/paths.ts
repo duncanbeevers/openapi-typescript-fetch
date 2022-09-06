@@ -9,7 +9,7 @@ export type Data = {
 type Query = {
   parameters: {
     path: { a: number; b: string }
-    query: { scalar: string; list: string[] }
+    query: { scalar: string; list: string[]; object?: { foo: string } }
   }
   responses: { 200: { schema: Data } }
 }

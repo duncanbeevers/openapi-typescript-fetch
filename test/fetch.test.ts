@@ -270,4 +270,88 @@ describe('fetch', () => {
     expect(captured.url).toEqual('https://api.backend.dev/bodyquery/1?scalar=a')
     expect(captured.body).toEqual('{"list":["b","c"]}')
   })
+
+  describe('stringify params', () => {
+    it('should use default stringifier', async () => {
+      fetcher.configure({
+        baseUrl: 'https://api.backend.dev',
+      })
+
+      const captured = { url: '' }
+
+      fetcher.use(async (url, init, next) => {
+        captured.url = url
+        return next(url, init)
+      })
+
+      const fun = fetcher.path('/query/{a}/{b}').method('get').create()
+
+      await fun({
+        a: 1,
+        b: '/',
+        scalar: 'a',
+        list: ['b', 'c'],
+      })
+
+      expect(captured.url).toBe(
+        'https://api.backend.dev/query/1/%2F?scalar=a&list=b&list=c',
+      )
+    })
+
+    it('should use custom stringifier', async () => {
+      fetcher.configure({
+        baseUrl: 'https://api.backend.dev',
+        stringifyParams: (params: any) => {
+          const urlSearchParams = new URLSearchParams()
+
+          Object.entries(params)
+            .flatMap(([key, value]) => {
+              if (value == null) {
+                return []
+              }
+
+              if (Array.isArray(value)) {
+                // Join list values with a custom character
+                return { key, value: value.join('|') }
+              }
+
+              if (typeof value === 'object') {
+                // JSON.stringify object values
+                return { key, value: JSON.stringify(value) }
+              }
+
+              return { key, value: String(value) }
+            })
+            .forEach(({ key, value }) => {
+              urlSearchParams.append(key, value)
+            })
+
+          return urlSearchParams.toString()
+        },
+      })
+
+      const captured = { url: '' }
+
+      fetcher.use(async (url, init, next) => {
+        captured.url = url
+        return next(url, init)
+      })
+
+      const fun = fetcher.path('/query/{a}/{b}').method('get').create()
+
+      await fun({
+        a: 1,
+        b: '/',
+        scalar: 'a',
+        list: ['b', 'c'],
+        object: {
+          foo: 'bar',
+        },
+      })
+
+      expect(captured.url).toBe(
+        'https://api.backend.dev/query/1/%2F?scalar=a&list=b%7Cc&object=%7B%22foo%22%3A%22bar%22%7D',
+      )
+    })
+  })
 })

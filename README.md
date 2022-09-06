@@ -53,7 +53,8 @@ fetcher.configure({
       ...
     },
   },
-  use: [...] // middlewares
+  use: [...], // middlewares
+  stringifyParams: // custom params stringifier
 })
 
 // create fetch operations
@@ -124,6 +125,38 @@ fetcher.configure({
 
 fetcher.use(logger)
 ```
+
+### Params Stringification
+
+OpenAPI 3 allows objects as query parameter values. If no custom stringifier is specified, the default behavior is predictable; top-level keys are preserved and uri-encoded, scalar values are uri-encoded, and list values are repeated and uri-encoded.
+
+```ts
+{ query: 'my search', option: ['stayLoggedIn', 'darkMode'] }
+// ?query=my%20search&option=stayLoggedIn&option=darkMode
+```
+
+In order to encode more complex values, or to use a custom encoding scheme, you may specify a custom query stringifier in the fetcher configuration. For example, this custom stringifier JSON-encodes any non-scalar query parameters.
+
+```ts
+fetcher.configure({
+  baseUrl: 'https://petstore.swagger.io/v2',
+  init: { ... },
+  stringifyParams: (params) => {
+    return Object
+      .entries(params)
+      .flatMap(([key, value]) => {
+        return value == null ?
+          [] :
+          `${
+            encodeURIComponent(key)
+          }=${
+            encodeURIComponent(typeof value == 'object' ? JSON.stringify(value) : value)
+          }`
+        }
+      )
+      .join('&')
+  }
+})
 
 ### Server Side Usage
 

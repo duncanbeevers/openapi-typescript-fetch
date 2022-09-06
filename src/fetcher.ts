@@ -21,28 +21,13 @@ const sendBody = (method: Method) =>
   method === 'patch' ||
   method === 'delete'
 
-function queryString(params: Record<string, unknown>): string {
-  const qs: string[] = []
+function queryString<TParams extends Record<string, unknown>>(
+  params: TParams,
+  stringifyParams: (value: any) => string,
+): string {
+  const encoded = stringifyParams(params)
 
-  const encode = (key: string, value: unknown) =>
-    `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`
-
-  Object.keys(params).forEach((key) => {
-    const value = params[key]
-    if (value != null) {
-      if (Array.isArray(value)) {
-        value.forEach((value) => qs.push(encode(key, value)))
-      } else {
-        qs.push(encode(key, value))
-      }
-    }
-  })
-
-  if (qs.length > 0) {
-    return `?${qs.join('&')}`
-  }
-
-  return ''
+  return encoded.length ? `?${encoded}` : ''
 }
 
 function getPath(path: string, payload: Record<string, any>) {
@@ -53,15 +38,12 @@ function getPath(path: string, payload: Record<string, any>) {
   })
 }
 
-function getQuery(
-  method: Method,
-  payload: Record<string, any>,
-  query: string[],
-) {
+function getQuery(request: Request, payload: Record<string, any>) {
+  const { method, queryParams, stringifyParams } = request
   let queryObj = {} as any
 
   if (sendBody(method)) {
-    query.forEach((key) => {
+    queryParams.forEach((key) => {
       queryObj[key] = payload[key]
       delete payload[key]
     })
@@ -69,7 +51,7 @@ function getQuery(
     queryObj = { ...payload }
   }
 
-  return queryString(queryObj)
+  return queryString(queryObj, stringifyParams)
 }
 
 function getHeaders(body?: string, init?: HeadersInit) {
@@ -119,7 +101,7 @@ function getFetchParams(request: Request) {
   )
 
   const path = getPath(request.path, payload)
-  const query = getQuery(request.method, payload, request.queryParams)
+  const query = getQuery(request, payload)
   const body = getBody(request.method, payload)
   const headers = getHeaders(body, request.init?.headers)
   const url = request.baseUrl + path + query
@@ -227,9 +209,36 @@ function createFetch<OP>(fetch: _TypedFetch<OP>): TypedFetch<OP> {
   return fun
 }
 
+function encodePair(key: string, value: unknown) {
+  return `${encodeURIComponent(key)}=${encodeURIComponent(value as string)}`
+}
+
+function queryParamsToQueryString(params: Record<string, unknown>): string {
+  return Object.entries(params)
+    .flatMap(([key, value]) => {
+      if (value == null) {
+        return []
+      }
+
+      if (Array.isArray(value)) {
+        return value.flatMap((innerValue) => {
+          if (innerValue == null) {
+            return []
+          }
+
+          return encodePair(key, innerValue)
+        })
+      }
+
+      return encodePair(key, value)
+    })
+    .join('&')
+}
+
 function fetcher<Paths>() {
   let baseUrl = ''
   let defaultInit: RequestInit = {}
+  let stringifyParams = queryParamsToQueryString
   const middlewares: Middleware[] = []
   const fetch = wrapMiddlewares(middlewares, fetchJson)
 
@@ -239,6 +248,7 @@ function fetcher<Paths>() {
       defaultInit = config.init || {}
       middlewares.splice(0)
       middlewares.push(...(config.use || []))
+      stringifyParams = config.stringifyParams || queryParamsToQueryString
     },
     use: (mw: Middleware) => middlewares.push(mw),
     path: <P extends keyof Paths>(path: P) => ({
@@ -253,6 +263,7 @@ function fetcher<Paths>() {
               payload,
               init: mergeRequestInit(defaultInit, init),
               fetch,
+              stringifyParams,
             }),
           )) as CreateFetch<M, Paths[P][M]>,
       }),

@@ -131,6 +131,7 @@ export type FetchConfig = {
   baseUrl?: string
   init?: RequestInit
   use?: Middleware[]
+  stringifyParams?: (value: unknown) => string
 }
 
 export type Request = {
@@ -141,6 +142,7 @@ export type Request = {
   payload: any
   init?: RequestInit
   fetch: Fetch
+  stringifyParams: (queryParams: any) => string
 }
 
 export type ApiResponse<R = any> = {
